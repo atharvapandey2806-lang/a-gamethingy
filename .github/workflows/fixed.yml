@@ -1,0 +1,17 @@
+name: Build All-Files Installer
+
+on:
+  push:
+    branches: [ "main" ]  # This forces it to run automatically once
+  workflow_dispatch:      # This adds the manual button
+    inputs:
+      version:
+        description: 'App Version'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+    - run: echo "Testing workflow visibility"   
