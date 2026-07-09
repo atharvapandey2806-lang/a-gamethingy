@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameBot — Sign In</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+    <main class="auth-page">
+        <div class="auth-shell">
+            <section class="auth-brand">
+                <div>
+                    <div class="brand-logo">
+                        <div class="brand-mark">🎮</div>
+                        <span>GAMEBOT</span>
+                    </div>
+                    <h1 class="brand-title" style="margin-top: 2rem;">Play smarter. Rank higher.</h1>
+                    <p class="brand-copy">Sign in to sync your desktop app, track ranked progress, and challenge friends across the arena.</p>
+                </div>
+                <ul class="feature-list">
+                    <li>Server-verified game outcomes</li>
+                    <li>Encrypted friend chat</li>
+                    <li>Cross-device account sync</li>
+                </ul>
+            </section>
+
+            <section class="auth-panel">
+                <h2 class="auth-heading">Welcome back</h2>
+                <p class="auth-subheading">Use the same account you created in the desktop app or on the web.</p>
+
+                <div class="alert alert-error" id="error-msg"></div>
+                <div class="alert alert-success" id="success-msg"></div>
+
+                <form id="login-form" onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label for="login-email">Email or username</label>
+                        <input type="text" id="login-email" placeholder="you@email.com" autocomplete="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="login-btn">Sign In</button>
+                </form>
+
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <span>Connecting to server…</span>
+                </div>
+
+                <p class="auth-footer">
+                    New here?
+                    <a href="signup.html">Create an account</a>
+                </p>
+            </section>
+        </div>
+    </main>
+
+    <script src="/static/js/api.js"></script>
+    <script>
+        const { apiFetch, parseJson, saveSession, getToken } = GameBotAPI;
+
+        function showAlert(id, message) {
+            const el = document.getElementById(id);
+            el.textContent = message;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 6000);
+        }
+
+        function showError(message) {
+            showAlert('error-msg', message);
+        }
+
+        function showSuccess(message) {
+            showAlert('success-msg', message);
+        }
+
+        function setLoading(show) {
+            document.getElementById('loading').classList.toggle('show', show);
+            document.getElementById('login-btn').disabled = show;
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+
+            const identity = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            const payload = identity.includes('@')
+                ? { email: identity, password }
+                : { username: identity, password };
+
+            setLoading(true);
+
+            try {
+                const response = await apiFetch('/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await parseJson(response);
+
+                if (response.ok) {
+                    saveSession(data.token, data.user);
+                    showSuccess('Signed in successfully. Opening dashboard…');
+                    setTimeout(() => { window.location.href = 'dashboard.html'; }, 700);
+                } else {
+                    showError(data.message || 'Login failed. Check your credentials.');
+                }
+            } catch (_error) {
+                showError('Cannot reach the GameBot server. Start the app or run START_SERVER.bat.');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        window.addEventListener('load', () => {
+            if (getToken()) {
+                window.location.href = 'dashboard.html';
+            }
+        });
+    </script>
+</body>
+</html>

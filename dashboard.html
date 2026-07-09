@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameBot — Dashboard</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="navbar">
+            <div class="container navbar-inner">
+                <div class="nav-brand">
+                    <div class="brand-mark">🎮</div>
+                    <span>GAMEBOT</span>
+                </div>
+                <ul class="nav-links">
+                    <li><a href="#" class="active" data-tab="dashboard" onclick="switchTab('dashboard', event)">Dashboard</a></li>
+                    <li><a href="#" data-tab="games" onclick="switchTab('games', event)">Play</a></li>
+                    <li><a href="#" data-tab="ranked" onclick="switchTab('ranked', event)">Ranked</a></li>
+                    <li><a href="#" data-tab="friends" onclick="switchTab('friends', event)">Friends</a></li>
+                </ul>
+                <div class="nav-actions">
+                    <span class="stat-pill">🏅 <span id="rank-tier">Bronze</span> · <span id="rank-rating">1000</span></span>
+                    <span class="stat-pill">💰 <span id="coins">100</span></span>
+                    <span class="stat-pill" id="username">Player</span>
+                    <button class="btn btn-secondary btn-small" onclick="logout()">Logout</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="container main-grid">
+            <aside class="panel sidebar-left">
+                <h3 class="panel-title">Your Stats</h3>
+                <div class="stat-row"><span>Level</span><span id="level">1</span></div>
+                <div class="stat-row"><span>Win Rate</span><span id="win-rate">0%</span></div>
+                <div class="stat-row"><span>Total Wins</span><span id="wins">0</span></div>
+                <div class="stat-row"><span>Losses</span><span id="losses">0</span></div>
+
+                <h3 class="panel-title" style="margin-top: 1.5rem;">Quick Play</h3>
+                <div class="sidebar-item" onclick="quickPlay('rps', 'rock')">Rock Paper Scissors</div>
+                <div class="sidebar-item" onclick="quickPlay('blackjack', 'deal')">Blackjack</div>
+                <div class="sidebar-item" onclick="quickPlay('trivia', 'Mars')">Trivia Pulse</div>
+            </aside>
+
+            <section class="panel main-section">
+                <div id="dashboard" class="tab-content active">
+                    <div class="hero-card">
+                        <h2>Welcome back, <span id="dash-username">Player</span></h2>
+                        <p>You are currently <strong id="dash-tier">Bronze</strong> with a rating of <strong id="dash-rating">1000</strong>.</p>
+                    </div>
+                    <p id="game-result" style="color: var(--text-muted);"></p>
+                </div>
+
+                <div id="games" class="tab-content">
+                    <h2 class="section-title">Choose a Game</h2>
+                    <div class="games-grid" id="games-grid"></div>
+                </div>
+
+                <div id="ranked" class="tab-content">
+                    <h2 class="section-title">Ranked Leaderboard</h2>
+                    <table class="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Player</th>
+                                <th>Rating</th>
+                                <th>Tier</th>
+                                <th>Wins</th>
+                                <th>Win Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-body"></tbody>
+                    </table>
+                </div>
+
+                <div id="friends" class="tab-content">
+                    <h2 class="section-title">Friends</h2>
+                    <button class="btn btn-primary btn-small" onclick="openModal('add-friend')">+ Add Friend</button>
+                    <div id="friends-list" style="margin-top: 1.25rem;"></div>
+                </div>
+            </section>
+
+            <aside class="panel sidebar-right">
+                <h3 class="panel-title">Season</h3>
+                <div class="notification" id="season-info">Loading season info…</div>
+                <h3 class="panel-title">Activity</h3>
+                <div class="notification">Play games to climb the ranked ladder.</div>
+                <div class="notification">Add friends to unlock encrypted chat in the desktop app.</div>
+            </aside>
+        </main>
+    </div>
+
+    <div id="add-friend" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span>Add Friend</span>
+                <button class="modal-close" onclick="closeModal('add-friend')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label for="friend-username">Username</label>
+                <input type="text" id="friend-username" placeholder="Enter username">
+            </div>
+            <button class="btn btn-primary" style="width: 100%;" onclick="addFriend()">Send Request</button>
+        </div>
+    </div>
+
+    <script src="/static/js/api.js"></script>
+    <script>
+        let currentUser = null;
+        const allGames = [
+            { id: 'rps', name: 'Rock Paper Scissors', icon: '✂️', players: 2 },
+            { id: 'blackjack', name: 'Blackjack Snap', icon: '🃏', players: '1+' },
+            { id: 'dice', name: 'Dice Duel', icon: '🎲', players: 2 },
+            { id: 'slots', name: 'Neon Slots', icon: '🎰', players: 1 },
+            { id: 'trivia', name: 'Trivia Pulse', icon: '🧠', players: '1+' },
+            { id: 'math', name: 'Math Blitz', icon: '➗', players: 1 }
+        ];
+
+        window.addEventListener('load', () => {
+            checkAuth();
+            loadGames();
+            loadLeaderboard();
+            loadSeason();
+        });
+
+        function checkAuth() {
+            const token = GameBotAPI.getToken();
+            const user = GameBotAPI.getUser();
+            if (!token || !user.id) {
+                window.location.href = 'login.html';
+                return;
+            }
+            currentUser = user;
+            updateUI();
+        }
+
+        function logout() {
+            GameBotAPI.clearSession();
+            window.location.href = 'login.html';
+        }
+
+        function updateUI() {
+            const rating = currentUser.rank_rating || currentUser.rating || 1000;
+            const tier = currentUser.rank_tier || currentUser.tier || 'Bronze';
+            const wins = currentUser.total_wins || currentUser.wins || 0;
+            const losses = currentUser.total_losses || currentUser.losses || 0;
+
+            document.getElementById('username').textContent = currentUser.username;
+            document.getElementById('rank-tier').textContent = tier;
+            document.getElementById('rank-rating').textContent = rating;
+            document.getElementById('coins').textContent = currentUser.coins || 0;
+            document.getElementById('level').textContent = currentUser.level || 1;
+            document.getElementById('win-rate').textContent = (currentUser.win_rate || 0) + '%';
+            document.getElementById('wins').textContent = wins;
+            document.getElementById('losses').textContent = losses;
+            document.getElementById('dash-username').textContent = currentUser.username;
+            document.getElementById('dash-tier').textContent = tier;
+            document.getElementById('dash-rating').textContent = rating;
+        }
+
+        function switchTab(tabName, event) {
+            if (event) event.preventDefault();
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.nav-links a').forEach(link => link.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active');
+            document.querySelector(`.nav-links a[data-tab="${tabName}"]`)?.classList.add('active');
+            if (tabName === 'friends') loadFriends();
+        }
+
+        function loadGames() {
+            const grid = document.getElementById('games-grid');
+            grid.innerHTML = allGames.map(game => `
+                <div class="game-card" onclick="quickPlay('${game.id}', '${game.id === 'rps' ? 'rock' : game.id === 'blackjack' ? 'deal' : game.id === 'trivia' ? 'Mars' : 'spin'}')">
+                    <div class="game-icon">${game.icon}</div>
+                    <div class="game-name">${game.name}</div>
+                    <div class="game-meta">${game.players} players</div>
+                    <button class="btn btn-primary btn-small">Play</button>
+                </div>
+            `).join('');
+        }
+
+        async function quickPlay(gameType, choice) {
+            try {
+                const response = await GameBotAPI.apiFetch('/games/quick-play', {
+                    method: 'POST',
+                    headers: GameBotAPI.authHeaders(),
+                    body: JSON.stringify({ game_type: gameType, choice: choice.toLowerCase() })
+                });
+                const data = await GameBotAPI.parseJson(response);
+                if (response.ok) {
+                    currentUser = data.user || currentUser;
+                    GameBotAPI.saveSession(GameBotAPI.getToken(), currentUser);
+                    updateUI();
+                    document.getElementById('game-result').textContent =
+                        `${data.outcome?.toUpperCase() || 'DONE'} — +${data.reward || 0} coins`;
+                } else {
+                    document.getElementById('game-result').textContent = data.message || 'Game failed.';
+                }
+            } catch (_error) {
+                document.getElementById('game-result').textContent = 'Server unavailable.';
+            }
+        }
+
+        async function loadLeaderboard() {
+            try {
+                const response = await GameBotAPI.apiFetch('/ranked/leaderboard?limit=10');
+                const data = await GameBotAPI.parseJson(response);
+                const tbody = document.getElementById('leaderboard-body');
+                tbody.innerHTML = (data.leaderboard || []).map(entry => {
+                    const rankClass = entry.rank === 1 ? 'rank-gold' : entry.rank === 2 ? 'rank-silver' : entry.rank === 3 ? 'rank-bronze' : '';
+                    return `<tr>
+                        <td class="${rankClass}">#${entry.rank}</td>
+                        <td>${entry.username}</td>
+                        <td>${entry.rating}</td>
+                        <td>${entry.rank_tier}</td>
+                        <td>${entry.wins}</td>
+                        <td>${entry.win_rate}%</td>
+                    </tr>`;
+                }).join('');
+            } catch (_error) {
+                document.getElementById('leaderboard-body').innerHTML =
+                    '<tr><td colspan="6">Could not load leaderboard.</td></tr>';
+            }
+        }
+
+        async function loadSeason() {
+            try {
+                const response = await GameBotAPI.apiFetch('/ranked/season');
+                const data = await GameBotAPI.parseJson(response);
+                document.getElementById('season-info').textContent =
+                    `${data.name || 'Season 1'} — tiers: ${(data.tiers || []).join(', ')}`;
+            } catch (_error) {
+                document.getElementById('season-info').textContent = 'Season info unavailable.';
+            }
+        }
+
+        async function loadFriends() {
+            try {
+                const response = await GameBotAPI.apiFetch('/friends', { headers: GameBotAPI.authHeaders() });
+                const data = await GameBotAPI.parseJson(response);
+                const list = document.getElementById('friends-list');
+                const friends = data.friends || [];
+                list.innerHTML = friends.length
+                    ? friends.map(f => `<div class="friend-item"><span>${f.username} · ${f.rank_tier}</span></div>`).join('')
+                    : '<p style="color: var(--text-muted);">No friends yet. Send a request to get started.</p>';
+            } catch (_error) {
+                document.getElementById('friends-list').innerHTML = '<p>Could not load friends.</p>';
+            }
+        }
+
+        async function addFriend() {
+            const username = document.getElementById('friend-username').value.trim();
+            if (!username) return;
+            try {
+                const response = await GameBotAPI.apiFetch('/friends/request', {
+                    method: 'POST',
+                    headers: GameBotAPI.authHeaders(),
+                    body: JSON.stringify({ username })
+                });
+                const data = await GameBotAPI.parseJson(response);
+                alert(response.ok ? 'Friend request sent.' : (data.message || 'Request failed.'));
+                closeModal('add-friend');
+                loadFriends();
+            } catch (_error) {
+                alert('Server unavailable.');
+            }
+        }
+
+        function openModal(id) { document.getElementById(id).classList.add('active'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+        window.onclick = function (event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.classList.remove('active');
+            }
+        };
+    </script>
+</body>
+</html>
