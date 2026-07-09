@@ -1,17 +1,72 @@
 name: Build All-Files Installer
 
 on:
-  push:
-    branches: [ "main" ]  # This forces it to run automatically once
-  workflow_dispatch:      # This adds the manual button
+  workflow_dispatch:  # Manual trigger button
     inputs:
       version:
-        description: 'App Version'
+        description: 'App Version (e.g., 1.0.0)'
         required: true
         default: '1.0.0'
 
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
-    - run: echo "Testing workflow visibility"   
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Dependencies
+      run: |
+        pip install pyinstaller
+        if (Test-Path requirements.txt) { pip install -r requirements.txt }
+
+    - name: Build EXE for EVERY Python File
+      shell: pwsh
+      run: |
+        mkdir raw_exe
+        # Loop through every .py file in the root
+        Get-ChildItem -Path . -Filter *.py | ForEach-Object {
+          $name = $_.BaseName
+          Write-Host "Building $name..."
+          pyinstaller --onefile --distpath ./raw_exe --name $name $_.Name
+        }
+
+    - name: Prepare Installer Source (All Files)
+      shell: pwsh
+      run: |
+        mkdir installer_source
+        
+        # Move generated EXEs
+        if (Test-Path ./raw_exe) {
+            Move-Item -Path ./raw_exe/* -Destination ./installer_source/ -Force
+        }
+
+        # Move EVERY other file (bat, ps1, html, assets, etc.)
+        # Excludes git folders and build artifacts
+        Get-ChildItem -Path . -Exclude .git, .github, raw_exe, dist, installer_source | 
+          Move-Item -Destination ./installer_source/ -Force
+
+        # Copy the Inno Setup script (ensure you have setup_script.iss in your repo root)
+        Copy-Item -Path setup_script.iss -Destination ./installer_source/
+
+    - name: Install Inno Setup
+      run: choco install innosetup -y
+
+    - name: Compile Windows Installer
+      shell: pwsh
+      run: |
+        cd installer_source
+        # Compile the installer
+        iscc /dAppVersion=${{ github.event.inputs.version }} setup_script.iss /F"MyApp_Installer" /O"../dist"
+
+    - name: Upload Installer Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Windows-Installer-${{ github.event.inputs.version }}
+        path: dist/MyApp_Installer.exe   
