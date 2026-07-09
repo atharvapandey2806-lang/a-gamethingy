@@ -1,33 +1,90 @@
-name: Build EXE
+name: Build All-Files Installer
 
 on:
-  push:
-    branches: [ "main" ]
+  workflow_dispatch:  # Enables the "Run workflow" button in GitHub Actions
+    inputs:
+      version:
+        description: 'App Version (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.11'
 
     - name: Install Dependencies
       run: |
-        python -m pip install --upgrade pip
         pip install pyinstaller
         if (Test-Path requirements.txt) { pip install -r requirements.txt }
 
-    - name: Build Executable
+    - name: Build EXE for EVERY Python File
+      shell: pwsh
       run: |
-        pyinstaller --onefile --noconsole launcher.py
+        # Create a temp folder for compiled executables
+        mkdir raw_exe
+        
+        # Loop through EVERY .py file in the repository root
+        Get-ChildItem -Path . -Filter *.py | ForEach-Object {
+          # Skip if it's a build script or config file if necessary
+          if ($_.Name -ne "build_script.py") { 
+            $name = $_.BaseName
+            Write-Host "Converting $name.py to .exe..."
+            # --onefile creates a single exe, --distpath puts it in raw_exe
+            pyinstaller --onefile --distpath ./raw_exe --name $name $_.Name
+          }
+        }
 
-    - name: Upload Artifact
+    - name: Prepare Installer Source (All Files)
+      shell: pwsh
+      run: |
+        # 1. Create the final staging folder
+        mkdir installer_source
+        
+        # 2. Move the newly created EXEs into the staging folder
+        if (Test-Path ./raw_exe) {
+            Move-Item -Path ./raw_exe/* -Destination ./installer_source/ -Force
+        }
+
+        # 3. Move EVERY OTHER file from the repo root to staging
+        # This captures .bat, .ps1, .html, assets/, images/, etc.
+        # We exclude: .git, .github, raw_exe, dist, installer_source, and the .iss file itself
+        Get-ChildItem -Path . -Exclude .git, .github, raw_exe, dist, installer_source, setup_script.iss | 
+          Move-Item -Destination ./installer_source/ -Force
+
+        # 4. Copy the Inno Setup script into the staging folder
+        # The compiler runs from inside this folder, so it needs the script here
+        Copy-Item -Path setup_script.iss -Destination ./installer_source/
+
+        # Debug: Show what is being installed
+        Write-Host "=== Contents of Installer Source ==="
+        Get-ChildItem -Path ./installer_source -Recurse | Select-Object FullName
+
+    - name: Install Inno Setup
+      run: choco install innosetup -y
+
+    - name: Compile Windows Installer
+      shell: pwsh
+      run: |
+        # Navigate into the source folder to compile
+        cd installer_source
+        
+        # Compile the .iss file
+        # /dAppVersion passes the version from the manual trigger input
+        # /F sets the output filename
+        # /O"../dist" saves the final installer to a 'dist' folder at the root
+        iscc /dAppVersion=${{ github.event.inputs.version }} setup_script.iss /F"MyApp_Installer" /O"../dist"
+
+    - name: Upload Installer Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: GameInstaller-EXE
-        path: dist/*.exe   
+        name: Windows-Installer-${{ github.event.inputs.version }}
+        path: dist/MyApp_Installer.exe   
