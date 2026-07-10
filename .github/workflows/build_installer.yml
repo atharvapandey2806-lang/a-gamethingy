@@ -8,6 +8,9 @@ on:
         required: true
         default: '1.0.0'
 
+permissions:
+  contents: write  # Required for pushing tags
+
 jobs:
   build:
     runs-on: windows-latest
@@ -16,16 +19,25 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Fetch all history for tags
+        fetch-depth: 0
         token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Create Git Tag
-      uses: rickstaa/action-create-tag@v1
-      with:
-        tag: "v${{ github.event.inputs.version }}"
-        message: "Release version ${{ github.event.inputs.version }}"
-        force_push_tag: false
-        tag_exists_error: false  # Don't fail if tag already exists
+    - name: Create Git Tag (Windows Compatible)
+      shell: pwsh
+      run: |
+        $version = "${{ github.event.inputs.version }}"
+        $tagName = "v$version"
+        
+        git config user.name "GitHub Actions"
+        git config user.email "github-actions@users.noreply.github.com"
+        
+        if (git tag --list $tagName) {
+            Write-Host "⚠️ Tag $tagName already exists. Skipping."
+        } else {
+            Write-Host "🏷️ Creating tag $tagName..."
+            git tag -a $tagName -m "Release version $version"
+            git push origin $tagName
+        }
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -48,8 +60,11 @@ jobs:
         Get-ChildItem -Path . -Filter *.py -File | ForEach-Object {
           $name = $_.BaseName
           Write-Host "🔨 Building $name..."
+          
           Remove-Item -Path "$outputDir/$name.exe" -ErrorAction SilentlyContinue
           pyinstaller --onefile --distpath $outputDir --name $name $_.Name
+          
+          # Cleanup cache to save space
           Remove-Item -Path "./build", "./$name.spec" -Recurse -Force -ErrorAction SilentlyContinue
         }
 
@@ -59,15 +74,18 @@ jobs:
         $targetDir = "./installer_source"
         New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
 
+        # 1. Move generated EXEs
         if (Test-Path "./raw_exe") {
             Get-ChildItem -Path "./raw_exe" -File | Move-Item -Destination $targetDir -Force
         }
 
+        # 2. Copy all other project files (excluding build artifacts)
         $excludeList = @('.git', '.github', 'raw_exe', 'dist', 'installer_source', '__pycache__', '.venv', 'venv')
         Get-ChildItem -Path . -Exclude $excludeList | ForEach-Object {
             Copy-Item -Path $_.FullName -Destination $targetDir -Recurse -Force
         }
 
+        # 3. Verify Inno Setup Script exists
         if (-not (Test-Path "setup_script.iss")) {
             Write-Error "❌ Error: setup_script.iss not found!"
             exit 1
@@ -83,4 +101,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: Windows-Installer-${{ github.event.inputs.version }}
-        path: dist/MyApp_Installer.exe   
+        path: dist/MyApp_Installer.exe
+        retention-days: 30   
