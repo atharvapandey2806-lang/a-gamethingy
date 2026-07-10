@@ -6,7 +6,8 @@ When packaged with PyInstaller, this single EXE installs the bundled app files
 into the user's local app folder, creates Windows shortcuts, starts the local
 server, and runs the button-based game UI.
 """
-
+import gamebot
+import gamebot_multiplayer_server 
 import json
 import importlib.util
 import os
