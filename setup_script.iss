@@ -1,8 +1,7 @@
 #define MyAppName "My Multi-Tool Suite"
-#define MyAppVersion {#AppVersion}
 
 [Setup]
-AppVersion={#MyAppVersion}
+AppVersion={#AppVersion}
 AppName={#MyAppName}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
@@ -20,7 +19,6 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; Installs EVERY file and folder recursively
 Source: "*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
