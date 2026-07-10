@@ -1,7 +1,7 @@
 name: Build All-Files Installer
 
 on:
-  workflow_dispatch:  # Manual trigger button
+  workflow_dispatch:
     inputs:
       version:
         description: 'App Version (e.g., 1.0.0)'
@@ -15,6 +15,17 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for tags
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create Git Tag
+      uses: rickstaa/action-create-tag@v1
+      with:
+        tag: "v${{ github.event.inputs.version }}"
+        message: "Release version ${{ github.event.inputs.version }}"
+        force_push_tag: false
+        tag_exists_error: false  # Don't fail if tag already exists
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -22,53 +33,51 @@ jobs:
         python-version: '3.11'
 
     - name: Install Dependencies
+      shell: pwsh
       run: |
+        python -m pip install --upgrade pip
         pip install pyinstaller
         if (Test-Path requirements.txt) { pip install -r requirements.txt }
 
-    - name: Build EXE for EVERY Python File
+    - name: Build EXEs for All Python Files
       shell: pwsh
       run: |
-        mkdir raw_exe
-        # Loop through every .py file in the root
-        Get-ChildItem -Path . -Filter *.py | ForEach-Object {
+        $outputDir = "./raw_exe"
+        New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+        
+        Get-ChildItem -Path . -Filter *.py -File | ForEach-Object {
           $name = $_.BaseName
-          Write-Host "Building $name..."
-          pyinstaller --onefile --distpath ./raw_exe --name $name $_.Name
+          Write-Host "🔨 Building $name..."
+          Remove-Item -Path "$outputDir/$name.exe" -ErrorAction SilentlyContinue
+          pyinstaller --onefile --distpath $outputDir --name $name $_.Name
+          Remove-Item -Path "./build", "./$name.spec" -Recurse -Force -ErrorAction SilentlyContinue
         }
 
-- name: Prepare Installer Source (All Files)
-  shell: pwsh
-  run: |
-    # Create directory if it doesn't exist
-    $targetDir = "./installer_source"
-    if (-not (Test-Path $targetDir)) {
-        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-    }
-
-    # Move all files (not subdirectories) from raw_exe if it exists
-    $sourceDir = "./raw_exe"
-    if (Test-Path $sourceDir) {
-        Get-ChildItem -Path $sourceDir -File | Move-Item -Destination $targetDir -Force
-    }   
-
-        # Move EVERY other file (bat, ps1, html, assets, etc.)
-        # Excludes git folders and build artifacts
-        Get-ChildItem -Path . -Exclude .git, .github, raw_exe, dist, installer_source | 
-          Move-Item -Destination ./installer_source/ -Force
-
-        # Copy the Inno Setup script (ensure you have setup_script.iss in your repo root)
-        Copy-Item -Path setup_script.iss -Destination ./installer_source/
-
-    - name: Install Inno Setup
-      run: choco install innosetup -y
-
-    - name: Compile Windows Installer
+    - name: Prepare Installer Source
       shell: pwsh
       run: |
-        cd installer_source
-        # Compile the installer
-        iscc /dAppVersion=${{ github.event.inputs.version }} setup_script.iss /F"MyApp_Installer" /O"../dist"
+        $targetDir = "./installer_source"
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+
+        if (Test-Path "./raw_exe") {
+            Get-ChildItem -Path "./raw_exe" -File | Move-Item -Destination $targetDir -Force
+        }
+
+        $excludeList = @('.git', '.github', 'raw_exe', 'dist', 'installer_source', '__pycache__', '.venv', 'venv')
+        Get-ChildItem -Path . -Exclude $excludeList | ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination $targetDir -Recurse -Force
+        }
+
+        if (-not (Test-Path "setup_script.iss")) {
+            Write-Error "❌ Error: setup_script.iss not found!"
+            exit 1
+        }
+
+    - name: Compile Windows Installer
+      uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+      with:
+        path: ./installer_source/setup_script.iss
+        options: /O+ /dAppVersion=${{ github.event.inputs.version }} /F"MyApp_Installer" /O"../dist"
 
     - name: Upload Installer Artifact
       uses: actions/upload-artifact@v4
