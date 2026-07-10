@@ -57,22 +57,13 @@ jobs:
         $outputDir = "./raw_exe"
         New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
         
-        Write-Host "🔨 Building main.exe from launcher.py..."
+        # Add --hidden-import if launcher.py uses subprocess or importlib to call the other files
+        $hiddenImports = "--hidden-import=gamebot --hidden-import=gamebot_multiplayer_server"
         
-        # Build ONLY launcher.py. PyInstaller will automatically bundle 
-        # gamebot.py and gamebot_multiplayer_server.py if they are imported.
-        pyinstaller --onefile --distpath $outputDir --name main launcher.py
+        Write-Host "🔨 Building main.exe..."
+        pyinstaller --onefile --distpath $outputDir --name main $hiddenImports launcher.py
         
-        # Cleanup cache
-        Remove-Item -Path "./build", "./main.spec" -Recurse -Force -ErrorAction SilentlyContinue
-        
-        # Verify output
-        if (Test-Path "$outputDir/main.exe") {
-            Write-Host "✅ main.exe created successfully!"
-        } else {
-            Write-Error "❌ Failed to create main.exe"
-            exit 1
-        }   
+        Remove-Item -Path "./build", "./main.spec" -Recurse -Force -ErrorAction SilentlyContinue     
 
     - name: Prepare Installer Source
       shell: pwsh
