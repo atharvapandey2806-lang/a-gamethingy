@@ -51,22 +51,28 @@ jobs:
         pip install pyinstaller
         if (Test-Path requirements.txt) { pip install -r requirements.txt }
 
-    - name: Build EXEs for All Python Files
+    - name: Build EXE (Single Entry Point)
       shell: pwsh
       run: |
         $outputDir = "./raw_exe"
         New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
         
-        Get-ChildItem -Path . -Filter *.py -File | ForEach-Object {
-          $name = $_.BaseName
-          Write-Host "🔨 Building $name..."
-          
-          Remove-Item -Path "$outputDir/$name.exe" -ErrorAction SilentlyContinue
-          pyinstaller --onefile --distpath $outputDir --name $name $_.Name
-          
-          # Cleanup cache to save space
-          Remove-Item -Path "./build", "./$name.spec" -Recurse -Force -ErrorAction SilentlyContinue
-        }
+        Write-Host "🔨 Building main.exe from launcher.py..."
+        
+        # Build ONLY launcher.py. PyInstaller will automatically bundle 
+        # gamebot.py and gamebot_multiplayer_server.py if they are imported.
+        pyinstaller --onefile --distpath $outputDir --name main launcher.py
+        
+        # Cleanup cache
+        Remove-Item -Path "./build", "./main.spec" -Recurse -Force -ErrorAction SilentlyContinue
+        
+        # Verify output
+        if (Test-Path "$outputDir/main.exe") {
+            Write-Host "✅ main.exe created successfully!"
+        } else {
+            Write-Error "❌ Failed to create main.exe"
+            exit 1
+        }   
 
     - name: Prepare Installer Source
       shell: pwsh
