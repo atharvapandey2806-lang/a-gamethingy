@@ -37,15 +37,20 @@ jobs:
           pyinstaller --onefile --distpath ./raw_exe --name $name $_.Name
         }
 
-    - name: Prepare Installer Source (All Files)
-      shell: pwsh
-      run: |
-        mkdir installer_source
-        
-        # Move generated EXEs
-        if (Test-Path ./raw_exe) {
-            Move-Item -Path ./raw_exe/* -Destination ./installer_source/ -Force
-        }
+- name: Prepare Installer Source (All Files)
+  shell: pwsh
+  run: |
+    # Create directory if it doesn't exist
+    $targetDir = "./installer_source"
+    if (-not (Test-Path $targetDir)) {
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+    }
+
+    # Move all files (not subdirectories) from raw_exe if it exists
+    $sourceDir = "./raw_exe"
+    if (Test-Path $sourceDir) {
+        Get-ChildItem -Path $sourceDir -File | Move-Item -Destination $targetDir -Force
+    }   
 
         # Move EVERY other file (bat, ps1, html, assets, etc.)
         # Excludes git folders and build artifacts
