@@ -1,0 +1,12 @@
+ Ignore HTML, CSS, and other web assets in language stats
+*.html linguist-detectable=false
+*.css linguist-detectable=false
+*.js linguist-detectable=false
+
+# Ignore build artifacts and logs
+*.log linguist-detectable=false
+*.exe linguist-detectable=false
+*.iss linguist-vendored=true
+
+# Ignore documentation if it skews stats
+*.md linguist-documentation=true
